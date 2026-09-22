@@ -1,0 +1,28 @@
+node_modules/
+.expo/
+.expo-shared/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+*.log
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# TypeScript
+*.tsbuildinfo
+
+# Supabase migrations
+supabase/migrations/
+.env
+.env*.local
+limpopo-app-firebase-adminsdk-fbsvc-d43bbfa847.json*.env*

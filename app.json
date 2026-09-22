@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Limpopo",
+    "slug": "limpopo-rider",
+    "version": "1.0.0",
+    "newArchEnabled": false,
+    "orientation": "portrait",
+    "icon": "./assets/Limpopo round.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/Limpopo round.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.limpopo.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Limpopo uses your microphone so you can call your driver in the app."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/Limpopo round.png",
+        "backgroundColor": "#ffffff"
+      },
+      "googleServicesFile": "./google-services.json",
+      "package": "com.limpopo.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/Limpopo round.png"
+    },
+    "scheme": "limpopo",
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/Limpopo round.png",
+          "color": "#C58B00"
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8e7df8f0-8f1a-4166-9697-d6434f7a61ee"
+      }
+    },
+    "owner": "limpopo-ride"
+  }
+}

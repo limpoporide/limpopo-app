@@ -1,0 +1,625 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+export type Database = {
+  public: {
+    Tables: {
+      rider_profile: {
+        Row: {
+          uuid: string;
+          first_name: string;
+          last_name: string;
+          email: string;
+          phone_num: string;
+          phone_verified: boolean;
+          profile_img: string | null;
+          city: string | null;
+          state: string | null;
+          wallet_account: string | null;
+          wallet_balance: number;
+          account_name: string | null;
+          bank_name: string | null;
+          budpay_customer_code: string | null;
+          location_lat: number | null;
+          location_lag: number | null;
+          push_notification: boolean;
+          expo_push_token: string | null;
+          push_token_updated_at: string | null;
+          visibility: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          uuid: string;
+          first_name: string;
+          last_name: string;
+          email: string;
+          phone_num: string;
+          phone_verified?: boolean;
+          profile_img?: string | null;
+          city?: string | null;
+          state?: string | null;
+          wallet_account?: string | null;
+          wallet_balance?: number;
+          account_name?: string | null;
+          bank_name?: string | null;
+          budpay_customer_code?: string | null;
+          location_lat?: number | null;
+          location_lag?: number | null;
+          push_notification?: boolean;
+          expo_push_token?: string | null;
+          push_token_updated_at?: string | null;
+          visibility?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          uuid?: string;
+          first_name?: string;
+          last_name?: string;
+          email?: string;
+          phone_num?: string;
+          phone_verified?: boolean;
+          profile_img?: string | null;
+          city?: string | null;
+          state?: string | null;
+          wallet_account?: string | null;
+          wallet_balance?: number;
+          account_name?: string | null;
+          bank_name?: string | null;
+          budpay_customer_code?: string | null;
+          location_lat?: number | null;
+          location_lag?: number | null;
+          push_notification?: boolean;
+          expo_push_token?: string | null;
+          push_token_updated_at?: string | null;
+          visibility?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'rider_profile_uuid_fkey';
+            columns: ['uuid'];
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      rider_transaction: {
+        Row: {
+          id: string;
+          rider_uuid: string;
+          reference: string;
+          type: string;
+          status: string;
+          channel: string | null;
+          gateway: string | null;
+          currency: string;
+          amount: number;
+          fees: number;
+          requested_amount: number | null;
+          sender_name: string | null;
+          sender_account: string | null;
+          narration: string | null;
+          paid_at: string | null;
+          raw_payload: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          rider_uuid: string;
+          reference: string;
+          type?: string;
+          status?: string;
+          channel?: string | null;
+          gateway?: string | null;
+          currency?: string;
+          amount: number;
+          fees?: number;
+          requested_amount?: number | null;
+          sender_name?: string | null;
+          sender_account?: string | null;
+          narration?: string | null;
+          paid_at?: string | null;
+          raw_payload?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          rider_uuid?: string;
+          reference?: string;
+          type?: string;
+          status?: string;
+          channel?: string | null;
+          gateway?: string | null;
+          currency?: string;
+          amount?: number;
+          fees?: number;
+          requested_amount?: number | null;
+          sender_name?: string | null;
+          sender_account?: string | null;
+          narration?: string | null;
+          paid_at?: string | null;
+          raw_payload?: Json | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'rider_transaction_rider_uuid_fkey';
+            columns: ['rider_uuid'];
+            referencedRelation: 'rider_profile';
+            referencedColumns: ['uuid'];
+          },
+        ];
+      };
+      rider_booking: {
+        Row: {
+          id: string;
+          rider_id: string;
+          assigned_driver: string | null;
+          pricing_id: string | null;
+          pick_up: string;
+          pickup_lat: number;
+          pickup_lng: number;
+          drop_off: string;
+          drop_lat: number;
+          drop_lng: number;
+          add_stop: string | null;
+          addstop_lat: number | null;
+          addstop_lng: number | null;
+          amount: number;
+          guest_rider: boolean;
+          guest_rider_name: string | null;
+          guest_rider_number: string | null;
+          total_km: number | null;
+          total_time: number | null;
+          base_fare: number;
+          distance_fare: number;
+          time_fare: number;
+          delay_fare: number;
+          vat_amount: number;
+          state_levy: number;
+          total_fare: number;
+          payment_method: 'wallet' | 'transfer' | 'cash' | 'card';
+          payment_status: 'unpaid' | 'paid';
+          vehicle_type: 'Limpopo Pro' | 'Limpopo Promax' | 'Limpopo Comfort';
+          driver_arrived_at: string | null;
+          trip_started_at: string | null;
+          trip_completed_at: string | null;
+          ride_status: 'open' | 'accepted' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'expired';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          rider_id: string;
+          assigned_driver?: string | null;
+          pricing_id?: string | null;
+          pick_up: string;
+          pickup_lat: number;
+          pickup_lng: number;
+          drop_off: string;
+          drop_lat: number;
+          drop_lng: number;
+          add_stop?: string | null;
+          addstop_lat?: number | null;
+          addstop_lng?: number | null;
+          guest_rider?: boolean;
+          guest_rider_name?: string | null;
+          guest_rider_number?: string | null;
+          total_km?: number | null;
+          total_time?: number | null;
+          base_fare?: number;
+          distance_fare?: number;
+          time_fare?: number;
+          delay_fare?: number;
+          amount?: number;
+          vat_amount?: number;
+          state_levy?: number;
+          total_fare?: number;
+          payment_method: 'wallet' | 'transfer' | 'cash' | 'card';
+          payment_status?: 'unpaid' | 'paid';
+          vehicle_type: 'Limpopo Pro' | 'Limpopo Promax' | 'Limpopo Comfort';
+          driver_arrived_at?: string | null;
+          trip_started_at?: string | null;
+          trip_completed_at?: string | null;
+          ride_status?: 'open' | 'accepted' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'expired';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          rider_id?: string;
+          assigned_driver?: string | null;
+          pricing_id?: string | null;
+          pick_up?: string;
+          pickup_lat?: number;
+          pickup_lng?: number;
+          drop_off?: string;
+          drop_lat?: number;
+          drop_lng?: number;
+          add_stop?: string | null;
+          addstop_lat?: number | null;
+          addstop_lng?: number | null;
+          guest_rider?: boolean;
+          guest_rider_name?: string | null;
+          guest_rider_number?: string | null;
+          total_km?: number | null;
+          total_time?: number | null;
+          base_fare?: number;
+          distance_fare?: number;
+          time_fare?: number;
+          delay_fare?: number;
+          amount?: number;
+          vat_amount?: number;
+          state_levy?: number;
+          total_fare?: number;
+          payment_method?: 'wallet' | 'transfer' | 'cash' | 'card';
+          payment_status?: 'unpaid' | 'paid';
+          vehicle_type?: 'Limpopo Pro' | 'Limpopo Promax' | 'Limpopo Comfort';
+          driver_arrived_at?: string | null;
+          trip_started_at?: string | null;
+          trip_completed_at?: string | null;
+          ride_status?: 'open' | 'accepted' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'expired';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'rider_booking_pricing_id_fkey';
+            columns: ['pricing_id'];
+            referencedRelation: 'vehicle_pricing';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'rider_booking_rider_id_fkey';
+            columns: ['rider_id'];
+            referencedRelation: 'rider_profile';
+            referencedColumns: ['uuid'];
+          },
+        ];
+      };
+      trip_share_session: {
+        Row: {
+          id: string;
+          booking_id: string;
+          rider_id: string;
+          share_token_hash: string;
+          share_status: 'active' | 'revoked' | 'expired';
+          expires_at: string;
+          created_at: string;
+          last_viewed_at: string | null;
+          viewer_label: string | null;
+          created_from: string | null;
+        };
+        Insert: {
+          id?: string;
+          booking_id: string;
+          rider_id: string;
+          share_token_hash: string;
+          share_status?: 'active' | 'revoked' | 'expired';
+          expires_at: string;
+          created_at?: string;
+          last_viewed_at?: string | null;
+          viewer_label?: string | null;
+          created_from?: string | null;
+        };
+        Update: {
+          id?: string;
+          booking_id?: string;
+          rider_id?: string;
+          share_token_hash?: string;
+          share_status?: 'active' | 'revoked' | 'expired';
+          expires_at?: string;
+          created_at?: string;
+          last_viewed_at?: string | null;
+          viewer_label?: string | null;
+          created_from?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'trip_share_session_booking_id_fkey';
+            columns: ['booking_id'];
+            referencedRelation: 'rider_booking';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'trip_share_session_rider_id_fkey';
+            columns: ['rider_id'];
+            referencedRelation: 'rider_profile';
+            referencedColumns: ['uuid'];
+          },
+        ];
+      };
+      schedule_booking: {
+        Row: {
+          id: string;
+          rider_id: string;
+          schedule_type: 'ride' | 'hourly' | 'hire';
+          schedule_date: string;
+          pickup_time: string;
+          passenger_num: number;
+          pick_up: string;
+          pickup_lat: number | null;
+          pickup_lng: number | null;
+          drop_off: string | null;
+          drop_lat: number | null;
+          drop_lng: number | null;
+          add_stop: string | null;
+          addstop_lat: number | null;
+          addstop_lng: number | null;
+          guest_rider: boolean;
+          guest_rider_name: string | null;
+          guest_rider_number: string | null;
+          pricing_id: string | null;
+          vehicle_type: 'Limpopo Pro' | 'Limpopo Promax' | 'Limpopo Comfort' | null;
+          base_fare: number;
+          distance_fare: number;
+          time_fare: number;
+          delay_fare: number;
+          amount: number;
+          vat_amount: number;
+          state_levy: number;
+          total_fare: number;
+          payment_method: 'wallet' | 'transfer' | 'cash' | 'card' | null;
+          assigned_driver: string | null;
+          booking_status: 'pending' | 'confirmed' | 'cancelled' | 'expired' | 'converted';
+          converted_rider_booking_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          rider_id: string;
+          schedule_type?: 'ride' | 'hourly' | 'hire';
+          schedule_date: string;
+          pickup_time: string;
+          passenger_num?: number;
+          pick_up: string;
+          pickup_lat?: number | null;
+          pickup_lng?: number | null;
+          drop_off?: string | null;
+          drop_lat?: number | null;
+          drop_lng?: number | null;
+          add_stop?: string | null;
+          addstop_lat?: number | null;
+          addstop_lng?: number | null;
+          guest_rider?: boolean;
+          guest_rider_name?: string | null;
+          guest_rider_number?: string | null;
+          pricing_id?: string | null;
+          vehicle_type?: 'Limpopo Pro' | 'Limpopo Promax' | 'Limpopo Comfort' | null;
+          base_fare?: number;
+          distance_fare?: number;
+          time_fare?: number;
+          delay_fare?: number;
+          amount?: number;
+          vat_amount?: number;
+          state_levy?: number;
+          total_fare?: number;
+          payment_method?: 'wallet' | 'transfer' | 'cash' | 'card' | null;
+          assigned_driver?: string | null;
+          booking_status?: 'pending' | 'confirmed' | 'cancelled' | 'expired' | 'converted';
+          converted_rider_booking_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          rider_id?: string;
+          schedule_type?: 'ride' | 'hourly' | 'hire';
+          schedule_date?: string;
+          pickup_time?: string;
+          passenger_num?: number;
+          pick_up?: string;
+          pickup_lat?: number | null;
+          pickup_lng?: number | null;
+          drop_off?: string | null;
+          drop_lat?: number | null;
+          drop_lng?: number | null;
+          add_stop?: string | null;
+          addstop_lat?: number | null;
+          addstop_lng?: number | null;
+          guest_rider?: boolean;
+          guest_rider_name?: string | null;
+          guest_rider_number?: string | null;
+          pricing_id?: string | null;
+          vehicle_type?: 'Limpopo Pro' | 'Limpopo Promax' | 'Limpopo Comfort' | null;
+          base_fare?: number;
+          distance_fare?: number;
+          time_fare?: number;
+          delay_fare?: number;
+          amount?: number;
+          vat_amount?: number;
+          state_levy?: number;
+          total_fare?: number;
+          payment_method?: 'wallet' | 'transfer' | 'cash' | 'card' | null;
+          assigned_driver?: string | null;
+          booking_status?: 'pending' | 'confirmed' | 'cancelled' | 'expired' | 'converted';
+          converted_rider_booking_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'schedule_booking_converted_rider_booking_id_fkey';
+            columns: ['converted_rider_booking_id'];
+            referencedRelation: 'rider_booking';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'schedule_booking_pricing_id_fkey';
+            columns: ['pricing_id'];
+            referencedRelation: 'vehicle_pricing';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'schedule_booking_rider_id_fkey';
+            columns: ['rider_id'];
+            referencedRelation: 'rider_profile';
+            referencedColumns: ['uuid'];
+          },
+        ];
+      };
+      vehicle_pricing: {
+        Row: {
+          id: string;
+          vehicle_type: string;
+          base_fare: number;
+          price_per_km: number;
+          price_per_min: number;
+          delay_price_per_min: number;
+          price_per_hour: number;
+          insurance_cost: number;
+          free_delay_mins: number;
+          max_delay_mins: number;
+          vat_percentage: number;
+          state_levy: number;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_type: string;
+          base_fare: number;
+          price_per_km: number;
+          price_per_min: number;
+          delay_price_per_min: number;
+          price_per_hour?: number;
+          insurance_cost?: number;
+          free_delay_mins?: number;
+          max_delay_mins?: number;
+          vat_percentage?: number;
+          state_levy?: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_type?: string;
+          base_fare?: number;
+          price_per_km?: number;
+          price_per_min?: number;
+          delay_price_per_min?: number;
+          price_per_hour?: number;
+          insurance_cost?: number;
+          free_delay_mins?: number;
+          max_delay_mins?: number;
+          vat_percentage?: number;
+          state_levy?: number;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      hourly_booking: {
+        Row: {
+          id: string;
+          rider_id: string;
+          assigned_driver: string | null;
+          pricing_id: string | null;
+          vehicle_type: string | null;
+          duration_hours: number;
+          pickup_time: string;
+          pickup_address: string;
+          pickup_lat: number;
+          pickup_lng: number;
+          rider_name: string | null;
+          rider_contact: string;
+          rider_email: string;
+          guest_rider: boolean;
+          guest_name: string | null;
+          guest_contact: string | null;
+          booking_notes: string | null;
+          amount: number;
+          payment_method: string | null;
+          booking_status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          rider_id: string;
+          assigned_driver?: string | null;
+          pricing_id?: string | null;
+          vehicle_type?: string | null;
+          duration_hours: number;
+          pickup_time: string;
+          pickup_address: string;
+          pickup_lat: number;
+          pickup_lng: number;
+          rider_name?: string | null;
+          rider_contact: string;
+          rider_email: string;
+          guest_rider?: boolean;
+          guest_name?: string | null;
+          guest_contact?: string | null;
+          booking_notes?: string | null;
+          amount?: number;
+          payment_method?: string | null;
+          booking_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          rider_id?: string;
+          assigned_driver?: string | null;
+          pricing_id?: string | null;
+          vehicle_type?: string | null;
+          duration_hours?: number;
+          pickup_time?: string;
+          pickup_address?: string;
+          pickup_lat?: number;
+          pickup_lng?: number;
+          rider_name?: string | null;
+          rider_contact?: string;
+          rider_email?: string;
+          guest_rider?: boolean;
+          guest_name?: string | null;
+          guest_contact?: string | null;
+          booking_notes?: string | null;
+          amount?: number;
+          payment_method?: string | null;
+          booking_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: {
+      calculate_trip_fare: {
+        Args: {
+          p_booking_id: string;
+          p_distance_km: number;
+          p_duration_min: number;
+        };
+        Returns: {
+          base_fare: number;
+          distance_fare: number;
+          time_fare: number;
+          delay_fare: number;
+          subtotal: number;
+          vat_amount: number;
+          state_levy: number;
+          total_fare: number;
+        }[];
+      };
+      get_nearby_online_drivers: {
+        Args: Record<string, never>;
+        Returns: {
+          uuid: string;
+          first_name: string | null;
+          last_name: string | null;
+          profile_img: string | null;
+          location_lat: number;
+          location_lng: number;
+        }[];
+      };
+    };
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};

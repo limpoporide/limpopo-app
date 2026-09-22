@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "997531081318",
+    "project_id": "limpopo-app",
+    "storage_bucket": "limpopo-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:997531081318:android:1d2e1926392877f7616ba7",
+        "android_client_info": {
+          "package_name": "com.limpopo.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9idakEul0ZKhFUD_UZaxJBDkuw6qOmto"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:997531081318:android:39190f4bdd0ef557616ba7",
+        "android_client_info": {
+          "package_name": "com.limpopo.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9idakEul0ZKhFUD_UZaxJBDkuw6qOmto"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
