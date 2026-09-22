@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -9,11 +10,13 @@ import {
   Image,
   Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { fetchRiderProfile, getCachedRiderProfile } from '../../src/lib/rider-profile';
+import { supabase } from '../../src/lib/supabase';
 
 type BaseSettingsItem = {
   icon: string;
@@ -100,6 +103,22 @@ export default function Settings() {
   const handleResetPasswordPress = () => {
     setShowPrivacyModal(false);
     router.push('/Security/reset-password');
+  };
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      Alert.alert('Logout failed', error.message);
+      return;
+    }
+
+    await AsyncStorage.multiRemove([
+      'rider_profile_cache',
+      'rider_transactions_cache',
+    ]);
+
+    router.replace('/login');
   };
 
   const settingsSections: SettingsSection[] = [
@@ -284,7 +303,7 @@ export default function Settings() {
               styles.logoutButton,
               { backgroundColor: theme.colors.error + '15', borderColor: theme.colors.error },
             ]}
-            onPress={() => router.replace('/login')}
+            onPress={handleLogout}
           >
             <Text style={[styles.logoutText, { color: theme.colors.error }]}>
               Logout

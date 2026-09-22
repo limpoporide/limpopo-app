@@ -10,6 +10,7 @@ import { supabase } from '../src/lib/supabase';
 SplashScreen.preventAutoHideAsync();
 
 const HAS_SEEN_INTRO_KEY = 'has_seen_intro';
+const SPLASH_DELAY_MS = 3000;
 
 export default function SplashScreenPage() {
   const router = useRouter();
@@ -70,7 +71,7 @@ export default function SplashScreenPage() {
           }
 
           router.replace(hasSeenIntro === 'true' ? '/login' : '/intro-slider');
-        }, 2000);
+        }, SPLASH_DELAY_MS);
       } catch (error) {
         console.error('Error during splash screen:', error);
       }
@@ -93,7 +94,7 @@ export default function SplashScreenPage() {
     >
       <View style={styles.content}>
         <Image
-          source={require('../assets/logo-limpopo.png')}
+          source={require('../assets/Limpopo round.png')}
           style={styles.logo}
           resizeMode="contain"
         />

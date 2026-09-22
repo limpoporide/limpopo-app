@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   View,
@@ -11,10 +11,12 @@ import {
   ScrollView,
   Alert,
   StatusBar,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import LottieView from 'lottie-react-native';
 import { useTheme } from '../src/context/ThemeContext';
 import { supabase } from '../src/lib/supabase';
 
@@ -23,8 +25,11 @@ const OTP_LENGTH = 6;
 const MIN_NAME_LENGTH = 3;
 const TERMII_BASE_URL = 'https://v4.api.termii.com';
 const TERMII_API_KEY = process.env.EXPO_PUBLIC_TERMII_API_KEY ?? '';
-const TERMII_SENDER_ID = process.env.EXPO_PUBLIC_TERMII_SENDER_ID ?? 'Limpopo';
-const TERMII_OTP_CHANNEL = process.env.EXPO_PUBLIC_TERMII_CHANNEL ?? 'generic';
+const TERMII_SENDER_ID = process.env.EXPO_PUBLIC_TERMII_SENDER_ID ?? 'OE Alert';
+const TERMII_OTP_CHANNEL = process.env.EXPO_PUBLIC_TERMII_CHANNEL ?? 'dnd';
+const OTP_RESEND_SECONDS = 60;
+const OTP_MAX_RETRIES = 3;
+const SUCCESS_ANIMATION = require('../assets/success.json');
 
 export default function Signup() {
   const router = useRouter();
@@ -46,6 +51,9 @@ export default function Signup() {
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [otpRetryCount, setOtpRetryCount] = useState(0);
+  const [showSignupSuccessModal, setShowSignupSuccessModal] = useState(false);
   const [errors, setErrors] = useState({
     firstName: '',
     lastName: '',
@@ -55,6 +63,7 @@ export default function Signup() {
     password: '',
     confirmPassword: '',
   });
+  const signupSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -119,7 +128,27 @@ export default function Signup() {
     return fallbackMessage;
   };
 
-  const handleSendOtp = async () => {
+  useEffect(() => {
+    if (otpCountdown <= 0) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setOtpCountdown((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [otpCountdown]);
+
+  useEffect(() => () => {
+    if (signupSuccessTimeoutRef.current) {
+      clearTimeout(signupSuccessTimeoutRef.current);
+    }
+  }, []);
+
+  const handleSendOtp = async (isRetry = false) => {
     const normalizedPhone = normalizePhoneNumber(formData.phone);
 
     if (!normalizedPhone) {
@@ -132,27 +161,34 @@ export default function Signup() {
       return;
     }
 
+    if (isRetry && otpRetryCount >= OTP_MAX_RETRIES) {
+      Alert.alert('Retry limit reached', 'You have used all OTP retries. Please contact admin for assistance.');
+      return;
+    }
+
     setIsSendingOtp(true);
 
     try {
+      const requestPayload = {
+        api_key: TERMII_API_KEY,
+        message_type: 'NUMERIC',
+        to: getTermiiPhoneNumber(normalizedPhone),
+        from: TERMII_SENDER_ID,
+        channel: TERMII_OTP_CHANNEL,
+        pin_attempts: 3,
+        pin_time_to_live: 5,
+        pin_length: OTP_LENGTH,
+        pin_placeholder: '< 123456 >',
+        message_text: 'Your Limpopo verification code is < 123456 >',
+        pin_type: 'NUMERIC',
+      };
+
       const response = await fetch(`${TERMII_BASE_URL}/api/sms/otp/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          api_key: TERMII_API_KEY,
-          message_type: 'NUMERIC',
-          to: getTermiiPhoneNumber(normalizedPhone),
-          from: TERMII_SENDER_ID,
-          channel: TERMII_OTP_CHANNEL,
-          pin_attempts: 3,
-          pin_time_to_live: 5,
-          pin_length: OTP_LENGTH,
-          pin_placeholder: '< 123456 >',
-          message_text: 'Your Limpopo verification code is < 123456 >',
-          pin_type: 'NUMERIC',
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       const payload = await response.json();
@@ -169,7 +205,7 @@ export default function Signup() {
           : '';
 
       if (!nextPinId) {
-        Alert.alert('OTP request failed', 'Termii did not return a verification reference.');
+        Alert.alert('OTP request failed', 'We could not start verification right now. Please try again.');
         return;
       }
 
@@ -177,7 +213,9 @@ export default function Signup() {
       setTermiiPinId(nextPinId);
       setFormData((current) => ({ ...current, otp: '' }));
       setShowOtpVerification(true);
-      Alert.alert('OTP sent', 'Check your phone for the verification code.');
+      setOtpCountdown(OTP_RESEND_SECONDS);
+      setOtpRetryCount((current) => (isRetry ? current + 1 : current));
+      Alert.alert('OTP sent', 'A verification code has been sent to your phone number.');
     } catch (error) {
       Alert.alert('OTP request failed', getErrorMessage(error, 'Unable to send OTP right now.'));
     } finally {
@@ -236,8 +274,9 @@ export default function Signup() {
       setFormData((current) => ({ ...current, otp: '' }));
       setIsPhoneVerified(true);
       setTermiiPinId('');
+      setOtpCountdown(0);
       setShowOtpVerification(false);
-      Alert.alert('Success', 'Phone number verified successfully.');
+      Alert.alert('Phone verified', 'Your phone number has been verified successfully.');
     } catch (error) {
       setIsPhoneVerified(false);
       Alert.alert('Verification failed', getErrorMessage(error, 'Unable to verify OTP right now.'));
@@ -331,19 +370,16 @@ export default function Signup() {
 
       const trimmedEmail = formData.email.trim().toLowerCase();
       const {
-        data: signUpData,
+        data: createAuthUserData,
         error: authError,
-      } = await supabase.auth.signUp({
-        phone: normalizedPhone,
-        password: formData.password,
-        options: {
-          data: {
-            email: trimmedEmail,
-          first_name: formData.firstName.trim(),
-          last_name: formData.lastName.trim(),
-          phone_num: formData.phone,
-          phone_verified: true,
-          },
+      } = await supabase.functions.invoke('create-rider-auth-user', {
+        method: 'POST',
+        body: {
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
+          email: trimmedEmail,
+          phone: formData.phone,
+          password: formData.password,
         },
       });
 
@@ -353,42 +389,23 @@ export default function Signup() {
         return;
       }
 
-      if (!signUpData.user) {
+      if (!createAuthUserData?.userId) {
         setIsSigningUp(false);
         Alert.alert('Unable to create account', 'Supabase did not return the new rider account.');
         return;
       }
 
-      if (!signUpData.session) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          phone: normalizedPhone,
-          password: formData.password,
-        });
+      const {
+        data: signInData,
+        error: signInError,
+      } = await supabase.auth.signInWithPassword({
+        phone: normalizedPhone,
+        password: formData.password,
+      });
 
-        if (signInError) {
-          setIsSigningUp(false);
-          Alert.alert('Account created, sign-in required', signInError.message);
-          return;
-        }
-      }
-
-      const { error: profileError } = await supabase.from('rider_profile').upsert(
-        {
-          uuid: signUpData.user.id,
-          first_name: formData.firstName.trim(),
-          last_name: formData.lastName.trim(),
-          email: trimmedEmail,
-          phone_num: formData.phone,
-          phone_verified: true,
-          wallet_balance: 0,
-          push_notification: true,
-        },
-        { onConflict: 'uuid' }
-      );
-
-      if (profileError) {
+      if (signInError || !signInData.user) {
         setIsSigningUp(false);
-        Alert.alert('Profile setup failed', profileError.message);
+        Alert.alert('Account created, sign-in required', signInError?.message ?? 'Please sign in with your phone number and password.');
         return;
       }
 
@@ -402,13 +419,16 @@ export default function Signup() {
       }
 
       setIsSigningUp(false);
+      setShowSignupSuccessModal(true);
 
-      Alert.alert('Success', 'Account created successfully!', [
-        {
-          text: 'OK',
-          onPress: () => router.replace('/login'),
-        },
-      ]);
+      if (signupSuccessTimeoutRef.current) {
+        clearTimeout(signupSuccessTimeoutRef.current);
+      }
+
+      signupSuccessTimeoutRef.current = setTimeout(() => {
+        setShowSignupSuccessModal(false);
+        router.replace('/login');
+      }, 3500);
     }
   };
 
@@ -424,6 +444,8 @@ export default function Signup() {
     if (field === 'phone') {
       setIsPhoneVerified(false);
       setTermiiPinId('');
+      setOtpCountdown(0);
+      setOtpRetryCount(0);
       setShowOtpVerification(false);
       setFormData((current) => ({ ...current, otp: '', [field]: sanitizedValue }));
       setErrors((current) => ({ ...current, phone: '', otp: '' }));
@@ -449,6 +471,9 @@ export default function Signup() {
     && validateName(formData.lastName)
     && validateEmail(formData.email.trim())
     && validatePhone(formData.phone);
+
+  const canRetryOtp = showOtpVerification && !isPhoneVerified && otpCountdown === 0 && otpRetryCount < OTP_MAX_RETRIES;
+  const hasReachedOtpRetryLimit = showOtpVerification && !isPhoneVerified && otpCountdown === 0 && otpRetryCount >= OTP_MAX_RETRIES;
 
   return (
     <SafeAreaView
@@ -582,7 +607,7 @@ export default function Signup() {
                 <Text style={[styles.errorText, { color: theme.colors.error }]}>{errors.phone}</Text>
               ) : null}
 
-              {canShowSendOtp ? (
+              {canShowSendOtp && !showOtpVerification ? (
                 <TouchableOpacity
                   style={[
                     styles.inlineAction,
@@ -591,7 +616,7 @@ export default function Signup() {
                       borderColor: theme.colors.primary,
                     },
                   ]}
-                  onPress={handleSendOtp}
+                  onPress={() => handleSendOtp()}
                   disabled={isSendingOtp}
                 >
                   {isSendingOtp ? (
@@ -600,6 +625,14 @@ export default function Signup() {
                     <Text style={[styles.inlineActionText, { color: '#FFFFFF' }]}>Send OTP</Text>
                   )}
                 </TouchableOpacity>
+              ) : null}
+
+              {showOtpVerification && !isPhoneVerified && otpCountdown > 0 ? (
+                <View style={styles.otpCountdownContainer}>
+                  <Text style={[styles.otpCountdownText, { color: theme.colors.textSecondary }]}>
+                    Resend available in 00:{String(otpCountdown).padStart(2, '0')}
+                  </Text>
+                </View>
               ) : null}
 
               {showOtpVerification && !isPhoneVerified ? (
@@ -632,19 +665,33 @@ export default function Signup() {
                     style={[
                       styles.inlineAction,
                       {
-                        backgroundColor: theme.colors.card,
-                        borderColor: theme.colors.border,
+                        backgroundColor: theme.colors.primary,
+                        borderColor: theme.colors.primary,
                       },
                     ]}
                     onPress={handleVerifyPhone}
                     disabled={isVerifyingOtp}
                   >
                     {isVerifyingOtp ? (
-                      <ActivityIndicator size="small" color={theme.colors.text} />
+                      <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
-                      <Text style={[styles.inlineActionText, { color: theme.colors.text }]}>Verify Phone</Text>
+                      <Text style={[styles.inlineActionText, { color: '#FFFFFF' }]}>Verify Phone</Text>
                     )}
                   </TouchableOpacity>
+
+                  {canRetryOtp ? (
+                    <TouchableOpacity
+                      onPress={() => handleSendOtp(true)}
+                      activeOpacity={0.75}
+                      disabled={isSendingOtp}
+                    >
+                      <Text style={[styles.retryText, { color: theme.colors.primary }]}>I didn't get the code</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {hasReachedOtpRetryLimit ? (
+                    <Text style={[styles.retryLimitText, { color: theme.colors.error }]}>Retry limit reached. Please contact admin for assistance.</Text>
+                  ) : null}
                 </>
               ) : null}
 
@@ -777,6 +824,26 @@ export default function Signup() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showSignupSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSignupSuccessModal(false)}
+      >
+        <View style={styles.successModalOverlay}>
+          <View style={[styles.successModalCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <LottieView
+              source={SUCCESS_ANIMATION}
+              autoPlay
+              loop={false}
+              style={styles.successAnimation}
+            />
+            <Text style={[styles.successModalTitle, { color: theme.colors.text }]}>Account created</Text>
+            <Text style={[styles.successModalText, { color: theme.colors.textSecondary }]}>Your rider account is ready. Redirecting you to login now.</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -873,6 +940,27 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 0,
   },
+  otpCountdownContainer: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  otpCountdownText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  retryText: {
+    marginTop: 14,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  retryLimitText: {
+    marginTop: 14,
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
   termsText: {
     fontSize: 14,
     lineHeight: 22,
@@ -905,5 +993,35 @@ const styles = StyleSheet.create({
   loginLink: {
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  successModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  successModalCard: {
+    width: '100%',
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  successAnimation: {
+    width: 140,
+    height: 140,
+    marginBottom: 8,
+  },
+  successModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  successModalText: {
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
   },
 });
