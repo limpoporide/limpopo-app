@@ -31,6 +31,8 @@ const OTP_RESEND_SECONDS = 60;
 const OTP_MAX_RETRIES = 3;
 const SUCCESS_ANIMATION = require('../assets/success.json');
 
+const DUPLICATE_ACCOUNT_ERROR_PATTERN = /already been registered|already exists|already registered|duplicate/i;
+
 export default function Signup() {
   const router = useRouter();
   const { theme, isDark } = useTheme();
@@ -126,6 +128,31 @@ export default function Signup() {
     }
 
     return fallbackMessage;
+  };
+
+  const getEdgeFunctionErrorMessage = async (error: unknown, fallbackMessage: string) => {
+    if (error && typeof error === 'object') {
+      const errorRecord = error as Record<string, unknown>;
+      const context = errorRecord.context;
+
+      if (context instanceof Response) {
+        try {
+          const payload = await context.clone().json();
+          return getErrorMessage(payload, fallbackMessage);
+        } catch {
+          try {
+            const responseText = await context.clone().text();
+            if (responseText.trim().length > 0) {
+              return responseText.trim();
+            }
+          } catch {
+            // Fall through to generic error handling below.
+          }
+        }
+      }
+    }
+
+    return getErrorMessage(error, fallbackMessage);
   };
 
   useEffect(() => {
@@ -384,8 +411,46 @@ export default function Signup() {
       });
 
       if (authError) {
+        const authErrorMessage = await getEdgeFunctionErrorMessage(
+          authError,
+          'Unable to create your account right now. Please try again.'
+        );
+
+        if (DUPLICATE_ACCOUNT_ERROR_PATTERN.test(authErrorMessage)) {
+          const {
+            data: existingSignInData,
+            error: existingSignInError,
+          } = await supabase.auth.signInWithPassword({
+            phone: normalizedPhone,
+            password: formData.password,
+          });
+
+          if (!existingSignInError && existingSignInData.user) {
+            const { error: virtualAccountError } = await supabase.functions.invoke('create-virtual-account', {
+              method: 'POST',
+            });
+
+            if (virtualAccountError) {
+              console.log('Virtual account creation failed:', virtualAccountError.message);
+            }
+
+            setIsSigningUp(false);
+            setShowSignupSuccessModal(true);
+
+            if (signupSuccessTimeoutRef.current) {
+              clearTimeout(signupSuccessTimeoutRef.current);
+            }
+
+            signupSuccessTimeoutRef.current = setTimeout(() => {
+              setShowSignupSuccessModal(false);
+              router.replace('/login');
+            }, 3500);
+            return;
+          }
+        }
+
         setIsSigningUp(false);
-        Alert.alert('Unable to create account', authError.message);
+        Alert.alert('Unable to create account', authErrorMessage);
         return;
       }
 

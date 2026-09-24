@@ -1,0 +1,42 @@
+node_modules/
+.expo/
+.expo-shared/
+.gradle/
+.kotlin/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+*.log
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# TypeScript
+*.tsbuildinfo
+
+# Supabase migrations
+supabase/migrations/
+
+# Android generated artifacts
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+
+# Local build outputs
+build-*.apk
+build-*.tar.gz
+output-build.log
+
+# Keep .env available to EAS local builds for EXPO_PUBLIC_* runtime config.
+.env*.local
+limpopo-app-firebase-adminsdk-fbsvc-d43bbfa847.json

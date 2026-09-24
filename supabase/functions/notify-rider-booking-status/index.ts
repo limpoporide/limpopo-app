@@ -46,7 +46,7 @@ const isExpoPushToken = (value: string | null) => {
 
 const resolveNotificationBody = (status: string, pickup: string, dropoff: string) => {
   if (status === 'arrived') {
-    return 'Please meet your captain. Your 5 minute arrival window has started.';
+    return 'Please meet your Pilot. Your 5 minute arrival window has started.';
   }
 
   if (status === 'in_progress') {
@@ -85,7 +85,7 @@ const resolveNotificationContent = (
   if (status === 'arrived') {
     return {
       type: 'driver_arrived',
-      title: 'Your captain has arrived',
+      title: 'Your Pilot has arrived',
       body: resolveNotificationBody(status, pickup, dropoff),
       statusKey: 'rideStatus',
     } as const;

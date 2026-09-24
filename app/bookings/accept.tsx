@@ -49,7 +49,8 @@ const GOOGLE_DIRECTIONS_API_KEY =
 const GOOGLE_DIRECTIONS_URL = 'https://maps.googleapis.com/maps/api/directions/json';
 const GOOGLE_GEOCODING_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 const BUDPAY_PUBLIC_KEY = process.env.EXPO_PUBLIC_BUDPAY_PUBLIC_KEY || '';
-const ARRIVED_COUNTDOWN_SECONDS = 5 * 60;
+const DEFAULT_FREE_DELAY_MINS = 3;
+const DEFAULT_MAX_DELAY_MINS = 30;
 const NOTIFICATION_BANNER_TIMEOUT_MS = 5000;
 const MAX_VISIBLE_NOTIFICATION_BANNERS = 3;
 const PENDING_DIRECT_TRANSFER_KEY_PREFIX = 'direct_transfer_pending_verification:';
@@ -71,13 +72,26 @@ type BookingSummary = {
   vehicleType: string;
   totalKm: number | null;
   totalTime: number | null;
+  amount: number;
+  delayFare: number;
+  vatAmount: number;
+  stateLevy: number;
   totalFare: number;
   rideStatus: string | null;
   paymentStatus: 'unpaid' | 'paid' | null;
   paymentMethod: string | null;
+  pricingId: string | null;
   driverArrivedAt: string | null;
   tripStartedAt: string | null;
   tripCompletedAt: string | null;
+};
+
+type VehiclePricingPolicy = {
+  id: string;
+  delayPricePerMin: number;
+  freeDelayMins: number;
+  maxDelayMins: number;
+  vatPercentage: number;
 };
 
 type RoutePoint = {
@@ -290,6 +304,14 @@ const formatCountdownLabel = (totalSeconds: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
+const roundCurrency = (value: number) => Number(value.toFixed(2));
+const roundUpToNearestHundred = (value: number) => Math.ceil(value / 100) * 100;
+
+const formatDelayMinutesLabel = (minutes: number) => {
+  const normalizedMinutes = Number.isInteger(minutes) ? minutes.toString() : minutes.toFixed(1);
+  return `${normalizedMinutes} minute${minutes === 1 ? '' : 's'}`;
+};
+
 const fetchDriverRouteMetrics = async (
   origin: RoutePoint,
   destination: RoutePoint
@@ -395,6 +417,7 @@ export default function Accept() {
   const drawerHeightRef = useRef<DrawerHeight>('expanded');
   const [assignedDriver, setAssignedDriver] = useState<AssignedDriverProfile | null>(null);
   const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
+  const [pricingPolicy, setPricingPolicy] = useState<VehiclePricingPolicy | null>(null);
   const [driverRouteMetrics, setDriverRouteMetrics] = useState<DriverRouteMetrics | null>(null);
   const [incomingCall, setIncomingCall] = useState<{ bookingId: string; participantName: string } | null>(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
@@ -414,6 +437,7 @@ export default function Accept() {
     phone: '',
   });
   const incomingChatSoundRef = useRef<Audio.Sound | null>(null);
+  const isPersistingDelayFareRef = useRef(false);
   const paymentSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [readableLocations, setReadableLocations] = useState({
     pickup: pickupLabel,
@@ -533,10 +557,20 @@ export default function Accept() {
       return;
     }
 
-    void playIncomingChatSound();
+    const hasAudibleNotification = nextNotifications.some(
+      (notification) => notification.type !== 'driver_arrived'
+    );
+
+    if (hasAudibleNotification) {
+      void playIncomingChatSound();
+    }
 
     nextNotifications.forEach((notification) => {
       seenNotificationIdsRef.current.add(notification.id);
+
+      if (notification.type === 'driver_arrived') {
+        return;
+      }
 
       setVisibleNotificationBanners((current) => {
         const withoutDuplicate = current.filter((item) => item.id !== notification.id);
@@ -574,6 +608,10 @@ export default function Accept() {
 
   useEffect(() => {
     const driverArrivedAt = bookingSummary?.driverArrivedAt;
+    const freeDelaySeconds = Math.max(
+      0,
+      Math.round((pricingPolicy?.freeDelayMins ?? DEFAULT_FREE_DELAY_MINS) * 60)
+    );
 
     if (rideStatus !== 'arrived') {
       setArrivedCountdownSeconds(null);
@@ -581,21 +619,20 @@ export default function Accept() {
     }
 
     if (!driverArrivedAt) {
-      setArrivedCountdownSeconds(ARRIVED_COUNTDOWN_SECONDS);
+      setArrivedCountdownSeconds(freeDelaySeconds);
       return;
     }
 
     const driverArrivedAtMs = new Date(driverArrivedAt).getTime();
 
     if (!Number.isFinite(driverArrivedAtMs)) {
-      setArrivedCountdownSeconds(ARRIVED_COUNTDOWN_SECONDS);
+      setArrivedCountdownSeconds(freeDelaySeconds);
       return;
     }
 
     const updateCountdown = () => {
-      const remainingSeconds = Math.max(
-        0,
-        Math.ceil((driverArrivedAtMs + ARRIVED_COUNTDOWN_SECONDS * 1000 - Date.now()) / 1000)
+      const remainingSeconds = Math.ceil(
+        (driverArrivedAtMs + freeDelaySeconds * 1000 - Date.now()) / 1000
       );
 
       setArrivedCountdownSeconds(remainingSeconds);
@@ -608,7 +645,127 @@ export default function Accept() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [bookingSummary?.driverArrivedAt, rideStatus]);
+  }, [bookingSummary?.driverArrivedAt, pricingPolicy?.freeDelayMins, rideStatus]);
+
+  useEffect(() => {
+    const pricingId = bookingSummary?.pricingId;
+
+    if (!pricingId) {
+      setPricingPolicy(null);
+      return;
+    }
+
+    let isActive = true;
+
+    const loadPricingPolicy = async () => {
+      const { data, error } = await supabase
+        .from('vehicle_pricing')
+        .select('id, delay_price_per_min, free_delay_mins, max_delay_mins, vat_percentage')
+        .eq('id', pricingId)
+        .maybeSingle();
+
+      if (error || !data || !isActive) {
+        if (isActive) {
+          setPricingPolicy(null);
+        }
+        return;
+      }
+
+      setPricingPolicy({
+        id: data.id,
+        delayPricePerMin: Number(data.delay_price_per_min),
+        freeDelayMins: Number(data.free_delay_mins ?? DEFAULT_FREE_DELAY_MINS),
+        maxDelayMins: Number(data.max_delay_mins ?? DEFAULT_MAX_DELAY_MINS),
+        vatPercentage: Number(data.vat_percentage),
+      });
+    };
+
+    void loadPricingPolicy();
+
+    return () => {
+      isActive = false;
+    };
+  }, [bookingSummary?.pricingId]);
+
+  useEffect(() => {
+    if (
+      !resolvedBookingId ||
+      !bookingSummary ||
+      !pricingPolicy ||
+      rideStatus !== 'arrived' ||
+      arrivedCountdownSeconds === null
+    ) {
+      return;
+    }
+
+    if (!bookingSummary.driverArrivedAt || !Number.isFinite(new Date(bookingSummary.driverArrivedAt).getTime())) {
+      return;
+    }
+
+    const overdueSeconds = Math.max(0, Math.abs(Math.min(0, arrivedCountdownSeconds)));
+    const chargeableDelayMinutes = Math.min(
+      pricingPolicy.maxDelayMins,
+      Math.floor(overdueSeconds / 60)
+    );
+    const nextDelayFare = roundCurrency(chargeableDelayMinutes * pricingPolicy.delayPricePerMin);
+    const baseAmount = roundCurrency(Math.max(0, bookingSummary.amount - bookingSummary.delayFare));
+    const nextAmount = roundCurrency(baseAmount + nextDelayFare);
+    const nextVatAmount = roundCurrency((nextAmount * pricingPolicy.vatPercentage) / 100);
+    const nextTotalFare = roundUpToNearestHundred(nextAmount + nextVatAmount + bookingSummary.stateLevy);
+
+    if (
+      nextDelayFare === bookingSummary.delayFare &&
+      nextAmount === bookingSummary.amount &&
+      nextVatAmount === bookingSummary.vatAmount &&
+      nextTotalFare === bookingSummary.totalFare
+    ) {
+      return;
+    }
+
+    if (isPersistingDelayFareRef.current) {
+      return;
+    }
+
+    isPersistingDelayFareRef.current = true;
+
+    void (async () => {
+      try {
+        const { error } = await supabase
+          .from('rider_booking')
+          .update({
+            delay_fare: nextDelayFare,
+            amount: nextAmount,
+            vat_amount: nextVatAmount,
+            total_fare: nextTotalFare,
+          })
+          .eq('id', resolvedBookingId)
+          .eq('ride_status', 'arrived');
+
+        if (error) {
+          throw error;
+        }
+
+        setBookingSummary((current) =>
+          current
+            ? {
+                ...current,
+                delayFare: nextDelayFare,
+                amount: nextAmount,
+                vatAmount: nextVatAmount,
+                totalFare: nextTotalFare,
+              }
+            : current
+        );
+      } catch (error) {
+        console.log('[Accept] Unable to persist delay fare update', {
+          bookingId: resolvedBookingId,
+          error,
+        });
+      } finally {
+        isPersistingDelayFareRef.current = false;
+      }
+    })();
+  }, [arrivedCountdownSeconds, bookingSummary, pricingPolicy, resolvedBookingId, rideStatus]);
 
   useEffect(() => {
     let isMounted = true;
@@ -693,7 +850,7 @@ export default function Accept() {
     const loadAssignedDriver = async () => {
       const { data: booking, error: bookingError } = await supabase
         .from('rider_booking')
-        .select('assigned_driver, vehicle_type, total_km, total_time, total_fare, ride_status, payment_status, payment_method, driver_arrived_at, trip_started_at, trip_completed_at')
+        .select('assigned_driver, pricing_id, vehicle_type, total_km, total_time, amount, delay_fare, vat_amount, state_levy, total_fare, ride_status, payment_status, payment_method, driver_arrived_at, trip_started_at, trip_completed_at')
         .eq('id', resolvedBookingId)
         .maybeSingle();
 
@@ -705,10 +862,15 @@ export default function Accept() {
         vehicleType: booking.vehicle_type,
         totalKm: booking.total_km,
         totalTime: booking.total_time,
+        amount: booking.amount,
+        delayFare: booking.delay_fare,
+        vatAmount: booking.vat_amount,
+        stateLevy: booking.state_levy,
         totalFare: booking.total_fare,
         rideStatus: booking.ride_status,
         paymentStatus: booking.payment_status,
         paymentMethod: booking.payment_method,
+        pricingId: booking.pricing_id,
         driverArrivedAt: booking.driver_arrived_at,
         tripStartedAt: booking.trip_started_at,
         tripCompletedAt: booking.trip_completed_at,
@@ -810,9 +972,17 @@ export default function Accept() {
                   : current.paymentStatus,
               totalKm: typeof next.total_km === 'number' ? next.total_km : current.totalKm,
               totalTime: typeof next.total_time === 'number' ? next.total_time : current.totalTime,
+              amount: typeof next.amount === 'number' ? next.amount : current.amount,
+              delayFare: typeof next.delay_fare === 'number' ? next.delay_fare : current.delayFare,
+              vatAmount: typeof next.vat_amount === 'number' ? next.vat_amount : current.vatAmount,
+              stateLevy: typeof next.state_levy === 'number' ? next.state_levy : current.stateLevy,
               totalFare: typeof next.total_fare === 'number' ? next.total_fare : current.totalFare,
               paymentMethod:
                 typeof next.payment_method === 'string' ? next.payment_method : current.paymentMethod,
+              pricingId:
+                typeof next.pricing_id === 'string' || next.pricing_id === null
+                  ? next.pricing_id
+                  : current.pricingId,
               driverArrivedAt:
                 typeof next.driver_arrived_at === 'string' || next.driver_arrived_at === null
                   ? next.driver_arrived_at
@@ -1089,15 +1259,9 @@ export default function Accept() {
   // Read via ref inside the call channel effect so driver name updates don't tear down the subscription.
   driverFirstNameRef.current = driver.firstName;
 
-  const rideDetails = {
-    pickup: readableLocations.pickup,
-    dropoff: readableLocations.dropoff,
-    eta: bookingSummary?.totalTime ? `${Math.round(bookingSummary.totalTime)} mins` : '—',
-    distance: bookingSummary?.totalKm ? `${bookingSummary.totalKm.toFixed(1)} km` : '—',
-    amount: bookingSummary ? formatCurrency(bookingSummary.totalFare) : '—',
-  };
   const tripDurationMinutes = bookingSummary?.totalTime ?? null;
   const tripApproachSeconds = driverRouteMetrics?.etaSeconds ?? null;
+  const freeDelayMinutes = pricingPolicy?.freeDelayMins ?? DEFAULT_FREE_DELAY_MINS;
   const totalArrivalSeconds =
     tripDurationMinutes !== null
       ? Math.max(0, Math.round(tripDurationMinutes * 60) + (tripApproachSeconds ?? 0))
@@ -1109,13 +1273,57 @@ export default function Accept() {
   const pickupEtaText =
     driverRouteMetrics?.etaText ??
     (tripApproachSeconds !== null ? `${Math.max(1, Math.ceil(tripApproachSeconds / 60))} min` : null);
+  const currentDelayMinutes =
+    bookingSummary?.delayFare && pricingPolicy?.delayPricePerMin
+      ? Math.round(bookingSummary.delayFare / pricingPolicy.delayPricePerMin)
+      : 0;
+  const extraDelaySeconds =
+    arrivedCountdownSeconds !== null && arrivedCountdownSeconds < 0 ? Math.abs(arrivedCountdownSeconds) : 0;
+  const liveDelayMinutes =
+    rideStatus === 'arrived' && pricingPolicy
+      ? Math.min(pricingPolicy.maxDelayMins, Math.floor(extraDelaySeconds / 60))
+      : currentDelayMinutes;
+  const liveDelayFare =
+    bookingSummary && pricingPolicy && rideStatus === 'arrived'
+      ? roundCurrency(liveDelayMinutes * pricingPolicy.delayPricePerMin)
+      : bookingSummary?.delayFare ?? 0;
+  const originalBaseRideAmount =
+    bookingSummary ? roundCurrency(Math.max(0, bookingSummary.amount - bookingSummary.delayFare)) : null;
+  const originalVatAmount =
+    bookingSummary && pricingPolicy && originalBaseRideAmount !== null
+      ? roundCurrency((originalBaseRideAmount * pricingPolicy.vatPercentage) / 100)
+      : null;
+  const originalComputedRideTotal =
+    bookingSummary && originalBaseRideAmount !== null && originalVatAmount !== null
+      ? roundUpToNearestHundred(
+          originalBaseRideAmount + originalVatAmount + bookingSummary.stateLevy
+        )
+      : bookingSummary?.totalFare ?? null;
+  const liveRideAmount =
+    originalComputedRideTotal !== null ? roundCurrency(originalComputedRideTotal + liveDelayFare) : null;
+  const liveTotalFare = liveRideAmount;
+  const rideDetails = {
+    pickup: readableLocations.pickup,
+    dropoff: readableLocations.dropoff,
+    eta: bookingSummary?.totalTime ? `${Math.round(bookingSummary.totalTime)} mins` : '—',
+    distance: bookingSummary?.totalKm ? `${bookingSummary.totalKm.toFixed(1)} km` : '—',
+    amount: liveTotalFare !== null ? formatCurrency(liveTotalFare) : '—',
+  };
   const timingPrompt =
     rideStatus === 'arrived'
       ? {
           icon: 'time-outline' as const,
           title: 'Pilot is waiting for you',
-          value: arrivedCountdownSeconds === 0 ? 'Pickup timer ended' : formatCountdownLabel(arrivedCountdownSeconds ?? 0),
-          hint: 'Please meet your Pilot within 5 minutes.',
+          value:
+            arrivedCountdownSeconds !== null && arrivedCountdownSeconds < 0
+              ? `Extra time ${formatCountdownLabel(extraDelaySeconds)}`
+              : formatCountdownLabel(arrivedCountdownSeconds ?? 0),
+          hint:
+            arrivedCountdownSeconds !== null && arrivedCountdownSeconds < 0
+              ? liveDelayFare > 0
+                ? `Delay fee added: ${formatCurrency(liveDelayFare)} for ${formatDelayMinutesLabel(liveDelayMinutes)}.`
+                : 'Delay charges will apply for each extra minute.'
+              : `Please meet your Pilot within ${formatDelayMinutesLabel(freeDelayMinutes)}.`,
         }
       : rideStatus === 'in_progress'
         ? {
@@ -1140,7 +1348,7 @@ export default function Accept() {
 
   const bannerMessage =
     rideStatus === 'arrived'
-      ? 'Your captain has arrived.'
+      ? 'Your Pilot has arrived.'
       : rideStatus === 'in_progress'
         ? 'Enjoy your Trip using Limpopo Ride. Please fasten your seat belt.'
         : rideStatus === 'completed'
@@ -2179,7 +2387,7 @@ export default function Accept() {
                 styles.timingPromptValue,
                 {
                   color:
-                    rideStatus === 'arrived' && arrivedCountdownSeconds === 0
+                    rideStatus === 'arrived' && arrivedCountdownSeconds !== null && arrivedCountdownSeconds <= 0
                       ? theme.colors.error
                       : theme.colors.primary,
                 },
@@ -2268,12 +2476,37 @@ export default function Accept() {
           <View style={[styles.section, { borderTopColor: theme.colors.border }]}>
             <View style={styles.paymentRow}>
               <Text style={[styles.amountLabel, { color: theme.colors.textSecondary }]}>
-                Amount for Ride
+                Ride amount
               </Text>
               <Text style={[styles.amountValue, { color: theme.colors.text }]}>
-                {rideDetails.amount}
+                {originalComputedRideTotal !== null ? formatCurrency(originalComputedRideTotal) : '—'}
               </Text>
             </View>
+            {rideStatus === 'arrived' || (bookingSummary?.delayFare ?? 0) > 0 ? (
+              <>
+                <View style={styles.paymentRow}>
+                  <Text style={[styles.amountLabel, { color: theme.colors.textSecondary }]}> 
+                    Delay fee
+                  </Text>
+                  <Text
+                    style={[
+                      styles.paymentBreakdownValue,
+                      { color: liveDelayFare > 0 ? theme.colors.error : theme.colors.textSecondary },
+                    ]}
+                  >
+                    {formatCurrency(liveDelayFare)}
+                  </Text>
+                </View>
+                <View style={[styles.paymentRow, styles.paymentTotalRow]}>
+                  <Text style={[styles.amountLabel, styles.paymentTotalLabel, { color: theme.colors.text }]}> 
+                    Total payable
+                  </Text>
+                  <Text style={[styles.amountValue, { color: theme.colors.text }]}> 
+                    {rideDetails.amount}
+                  </Text>
+                </View>
+              </>
+            ) : null}
             <TouchableOpacity
               style={[
                 styles.payButton,
@@ -2321,21 +2554,16 @@ export default function Accept() {
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.bannerSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-            <Ionicons name="ribbon-outline" size={18} color={theme.colors.primary} />
-            <View style={styles.bannerContent}>
-              <Text style={[styles.bannerText, { color: theme.colors.text }]}>
-                {bannerMessage}
-              </Text>
-              {rideStatus === 'arrived' && arrivedCountdownSeconds !== null ? (
-                <Text style={[styles.arrivedCountdownText, { color: arrivedCountdownSeconds === 0 ? theme.colors.error : theme.colors.primary }]}>
-                  {arrivedCountdownSeconds === 0
-                    ? 'Arrival timer ended'
-                    : `Arrival timer ${formatCountdownLabel(arrivedCountdownSeconds)}`}
+          {rideStatus !== 'arrived' ? (
+            <View style={[styles.bannerSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
+              <Ionicons name="ribbon-outline" size={18} color={theme.colors.primary} />
+              <View style={styles.bannerContent}>
+                <Text style={[styles.bannerText, { color: theme.colors.text }]}> 
+                  {bannerMessage}
                 </Text>
-              ) : null}
+              </View>
             </View>
-          </View>
+          ) : null}
 
           {/* Cancel Button */}
           <TouchableOpacity
@@ -2791,12 +3019,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
+  paymentTotalRow: {
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
   amountLabel: {
     fontSize: 14,
   },
   amountValue: {
     fontSize: 19,
     fontWeight: '700',
+  },
+  paymentBreakdownValue: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  paymentTotalLabel: {
+    fontWeight: '600',
   },
   payButton: {
     paddingVertical: 13,
