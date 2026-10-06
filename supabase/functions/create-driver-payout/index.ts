@@ -1,10 +1,11 @@
 // Supabase Edge Function: create-driver-payout
 // Initiates a BudPay bank transfer (payout) from a driver's wallet_balance to
-// their saved payout bank account. See:
-// https://developer.budpay.com/making-payment/single-transfer
+// their saved payout bank account. BudPay requires IP whitelisting for this
+// call, and Supabase edge functions have no static egress IP, so the actual
+// bank_transfer request is forwarded through a signed proxy running on a
+// DigitalOcean droplet with a static IP. See budpay-proxy-droplet/README.md.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const BUDPAY_BASE_URL = 'https://api.budpay.com/api/v2';
 const MIN_PAYOUT_AMOUNT = 100;
 
 const toHex = (buffer: ArrayBuffer) =>
@@ -12,17 +13,19 @@ const toHex = (buffer: ArrayBuffer) =>
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
 
-const signBudPayPayload = async (payload: string, secretKey: string) => {
+// Signs the outbound request to our own droplet proxy (HMAC-SHA256), distinct
+// from BudPay's own HMAC-SHA512 payload signature which the droplet computes.
+const signProxyRequest = async (message: string, secret: string) => {
   const encoder = new TextEncoder();
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(secretKey),
-    { name: 'HMAC', hash: 'SHA-512' },
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   );
 
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(payload));
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(message));
   return toHex(signature);
 };
 
@@ -41,9 +44,10 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const budpaySecretKey = Deno.env.get('BUDPAY_SECRET_KEY');
+    const budpayProxyUrl = Deno.env.get('BUDPAY_PROXY_URL');
+    const proxySigningSecret = Deno.env.get('BUDPAY_PROXY_SIGNING_SECRET');
 
-    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey || !budpaySecretKey) {
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey || !budpayProxyUrl || !proxySigningSecret) {
       return new Response(JSON.stringify({ error: 'Server is misconfigured' }), { status: 500 });
     }
 
@@ -125,20 +129,26 @@ Deno.serve(async (req: Request) => {
 
     const transferPayload = JSON.stringify({
       currency: 'NGN',
-      amount: String(amount),
+      amount: String(amount), // BudPay's bank_transfer contract requires amount as a String
       bank_code: profile.payout_bank_code,
       bank_name: profile.payout_bank_name,
       account_number: profile.payout_account_number,
       narration,
     });
-    const transferSignature = await signBudPayPayload(transferPayload, budpaySecretKey);
 
-    const transferResponse = await fetch(`${BUDPAY_BASE_URL}/bank_transfer`, {
+    // BudPay only whitelists the droplet's static IP, so the signed transfer
+    // request goes to our proxy instead of https://api.budpay.com directly.
+    const requestId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    const proxySignature = await signProxyRequest(`${timestamp}.${requestId}.${transferPayload}`, proxySigningSecret);
+
+    const transferResponse = await fetch(`${budpayProxyUrl}/v1/budpay/bank-transfer`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${budpaySecretKey}`,
-        Encryption: transferSignature,
+        'X-Limpopo-Timestamp': timestamp,
+        'X-Limpopo-Request-Id': requestId,
+        'X-Limpopo-Signature': proxySignature,
       },
       body: transferPayload,
     });

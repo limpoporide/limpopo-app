@@ -34,6 +34,10 @@ import RideCancel from '@/components/bookings/ride-cancel';
 import { BudPayCheckoutModal } from '@/components/BudPayCheckoutModal';
 import QuickWallet from '@/components/quick_wallet';
 import { showIncomingNativeCall } from '@/lib/native-calling';
+import {
+  hideRideOngoingNotification,
+  showRideOngoingNotification,
+} from '@/lib/ride-ongoing-notification';
 import { fetchUnreadDriverMessageCount, markDriverMessagesRead, subscribeToChatMessages } from '@/lib/chat';
 import type { NotificationItem } from '@/lib/notifications';
 import { fetchRiderProfile, getCachedRiderProfile } from '@/lib/rider-profile';
@@ -558,7 +562,8 @@ export default function Accept() {
     }
 
     const hasAudibleNotification = nextNotifications.some(
-      (notification) => notification.type !== 'driver_arrived'
+      (notification) =>
+        notification.type !== 'driver_arrived' && notification.type !== 'ride_accepted'
     );
 
     if (hasAudibleNotification) {
@@ -568,7 +573,7 @@ export default function Accept() {
     nextNotifications.forEach((notification) => {
       seenNotificationIdsRef.current.add(notification.id);
 
-      if (notification.type === 'driver_arrived') {
+      if (notification.type === 'driver_arrived' || notification.type === 'ride_accepted') {
         return;
       }
 
@@ -2156,6 +2161,38 @@ export default function Accept() {
     };
   }, [resolvedBookingId]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const syncRideNotification = async () => {
+      if (!resolvedBookingId) {
+        await hideRideOngoingNotification();
+        return;
+      }
+
+      if (rideStatus === 'accepted' || rideStatus === 'arrived' || rideStatus === 'in_progress') {
+        await showRideOngoingNotification({
+          bookingId: resolvedBookingId,
+          status: rideStatus,
+          driverName: driver.firstName,
+        });
+        return;
+      }
+
+      await hideRideOngoingNotification();
+    };
+
+    void syncRideNotification().catch((error) => {
+      console.log('[Accept] Unable to sync ride ongoing notification', {
+        bookingId: resolvedBookingId,
+        rideStatus,
+        error,
+      });
+    });
+  }, [driver.firstName, resolvedBookingId, rideStatus]);
+
   return (
     <View style={styles.container}>
       <StatusBar style="dark" translucent backgroundColor="transparent" />
@@ -2554,6 +2591,7 @@ export default function Accept() {
             </TouchableOpacity>
           </View>
 
+          {/*
           {rideStatus !== 'arrived' ? (
             <View style={[styles.bannerSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
               <Ionicons name="ribbon-outline" size={18} color={theme.colors.primary} />
@@ -2564,6 +2602,7 @@ export default function Accept() {
               </View>
             </View>
           ) : null}
+          */}
 
           {/* Cancel Button */}
           <TouchableOpacity

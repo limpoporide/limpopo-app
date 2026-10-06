@@ -23,10 +23,6 @@ import { supabase } from '../src/lib/supabase';
 const PASSWORD_LENGTH = 6;
 const OTP_LENGTH = 6;
 const MIN_NAME_LENGTH = 3;
-const TERMII_BASE_URL = 'https://v4.api.termii.com';
-const TERMII_API_KEY = process.env.EXPO_PUBLIC_TERMII_API_KEY ?? '';
-const TERMII_SENDER_ID = process.env.EXPO_PUBLIC_TERMII_SENDER_ID ?? 'OE Alert';
-const TERMII_OTP_CHANNEL = process.env.EXPO_PUBLIC_TERMII_CHANNEL ?? 'dnd';
 const OTP_RESEND_SECONDS = 60;
 const OTP_MAX_RETRIES = 3;
 const SUCCESS_ANIMATION = require('../assets/success.json');
@@ -101,8 +97,6 @@ export default function Signup() {
     return null;
   };
 
-  const getTermiiPhoneNumber = (normalizedPhone: string) => normalizedPhone.replace(/^\+/, '');
-
   const getErrorMessage = (error: unknown, fallbackMessage: string) => {
     if (typeof error === 'string' && error.trim().length > 0) {
       return error;
@@ -155,6 +149,19 @@ export default function Signup() {
     return getErrorMessage(error, fallbackMessage);
   };
 
+  const invokeOtpFunction = async <T,>(name: string, body: Record<string, unknown>, fallbackMessage: string): Promise<T> => {
+    const { data, error } = await supabase.functions.invoke(name, {
+      method: 'POST',
+      body,
+    });
+
+    if (error) {
+      throw new Error(await getEdgeFunctionErrorMessage(error, fallbackMessage));
+    }
+
+    return data as T;
+  };
+
   useEffect(() => {
     if (otpCountdown <= 0) {
       return;
@@ -183,11 +190,6 @@ export default function Signup() {
       return;
     }
 
-    if (!TERMII_API_KEY) {
-      Alert.alert('OTP setup missing', 'Add EXPO_PUBLIC_TERMII_API_KEY to continue.');
-      return;
-    }
-
     if (isRetry && otpRetryCount >= OTP_MAX_RETRIES) {
       Alert.alert('Retry limit reached', 'You have used all OTP retries. Please contact admin for assistance.');
       return;
@@ -196,45 +198,8 @@ export default function Signup() {
     setIsSendingOtp(true);
 
     try {
-      const requestPayload = {
-        api_key: TERMII_API_KEY,
-        message_type: 'NUMERIC',
-        to: getTermiiPhoneNumber(normalizedPhone),
-        from: TERMII_SENDER_ID,
-        channel: TERMII_OTP_CHANNEL,
-        pin_attempts: 3,
-        pin_time_to_live: 5,
-        pin_length: OTP_LENGTH,
-        pin_placeholder: '< 123456 >',
-        message_text: 'Your Limpopo verification code is < 123456 >',
-        pin_type: 'NUMERIC',
-      };
-
-      const response = await fetch(`${TERMII_BASE_URL}/api/sms/otp/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload),
-      });
-
-      const payload = await response.json();
-
-      if (!response.ok) {
-        Alert.alert('OTP request failed', getErrorMessage(payload, 'Unable to send OTP right now.'));
-        return;
-      }
-
-      const nextPinId = typeof payload?.pinId === 'string'
-        ? payload.pinId
-        : typeof payload?.pin_id === 'string'
-          ? payload.pin_id
-          : '';
-
-      if (!nextPinId) {
-        Alert.alert('OTP request failed', 'We could not start verification right now. Please try again.');
-        return;
-      }
+      const payload = await invokeOtpFunction<{ pinId: string }>('send-phone-otp', { phone: normalizedPhone }, 'Unable to send OTP right now.');
+      const nextPinId = payload.pinId;
 
       setErrors((current) => ({ ...current, phone: '', otp: '' }));
       setTermiiPinId(nextPinId);
@@ -268,34 +233,10 @@ export default function Signup() {
       return;
     }
 
-    if (!TERMII_API_KEY) {
-      Alert.alert('OTP setup missing', 'Add EXPO_PUBLIC_TERMII_API_KEY to continue.');
-      return;
-    }
-
     setIsVerifyingOtp(true);
 
     try {
-      const response = await fetch(`${TERMII_BASE_URL}/api/sms/otp/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          api_key: TERMII_API_KEY,
-          pin_id: termiiPinId,
-          pin: formData.otp,
-        }),
-      });
-
-      const payload = await response.json();
-      const isVerified = String(payload?.verified).toLowerCase() === 'true';
-
-      if (!response.ok || !isVerified) {
-        setIsPhoneVerified(false);
-        Alert.alert('Verification failed', getErrorMessage(payload, 'The OTP code is invalid or has expired.'));
-        return;
-      }
+      await invokeOtpFunction<{ verified: boolean }>('verify-phone-otp', { pinId: termiiPinId, pin: formData.otp }, 'The OTP code is invalid or has expired.');
 
       setErrors((current) => ({ ...current, otp: '' }));
       setFormData((current) => ({ ...current, otp: '' }));

@@ -22,7 +22,7 @@ const normalizePasswordInput = (text: string) => text.replace(/\D/g, '').slice(0
 
 export default function CreatePasswordScreen() {
   const router = useRouter();
-  const { identifier } = useLocalSearchParams<{ identifier?: string }>();
+  const { identifier, phone, resetToken } = useLocalSearchParams<{ identifier?: string; phone?: string; resetToken?: string }>();
   const { theme } = useTheme();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -34,6 +34,55 @@ export default function CreatePasswordScreen() {
   const hasValidPasswordFormat = password.length === 6;
   const hasValidConfirmPasswordFormat = confirmPassword.length === 6;
   const passwordsMatch = hasValidPasswordFormat && hasValidConfirmPasswordFormat && password === confirmPassword;
+
+  const getErrorMessage = (error: unknown, fallbackMessage: string) => {
+    if (typeof error === 'string' && error.trim().length > 0) {
+      return error;
+    }
+
+    if (error && typeof error === 'object') {
+      const errorRecord = error as Record<string, unknown>;
+
+      if (typeof errorRecord.message === 'string' && errorRecord.message.trim().length > 0) {
+        return errorRecord.message;
+      }
+
+      if (typeof errorRecord.error === 'string' && errorRecord.error.trim().length > 0) {
+        return errorRecord.error;
+      }
+
+      if (typeof errorRecord.details === 'string' && errorRecord.details.trim().length > 0) {
+        return errorRecord.details;
+      }
+    }
+
+    return fallbackMessage;
+  };
+
+  const getEdgeFunctionErrorMessage = async (error: unknown, fallbackMessage: string) => {
+    if (error && typeof error === 'object') {
+      const errorRecord = error as Record<string, unknown>;
+      const context = errorRecord.context;
+
+      if (context instanceof Response) {
+        try {
+          const payload = await context.clone().json();
+          return getErrorMessage(payload, fallbackMessage);
+        } catch {
+          try {
+            const responseText = await context.clone().text();
+            if (responseText.trim().length > 0) {
+              return responseText.trim();
+            }
+          } catch {
+            // Fall through to generic error handling below.
+          }
+        }
+      }
+    }
+
+    return getErrorMessage(error, fallbackMessage);
+  };
 
   useEffect(() => {
     if (!showSuccessToast) {
@@ -54,6 +103,12 @@ export default function CreatePasswordScreen() {
   }, [router, showSuccessToast]);
 
   const handleConfirm = async () => {
+    if (!phone || !resetToken) {
+      Alert.alert('Reset expired', 'Start password reset again from the previous screen.');
+      router.replace('/Security/forgot-password');
+      return;
+    }
+
     if (!hasValidPasswordFormat || !hasValidConfirmPasswordFormat) {
       return;
     }
@@ -64,26 +119,19 @@ export default function CreatePasswordScreen() {
 
     setIsUpdatingPassword(true);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      setIsUpdatingPassword(false);
-      Alert.alert('Verification expired', 'Request and verify a new OTP before setting your password.');
-      router.replace('/Security/forgot-password');
-      return;
-    }
-
-    const { error } = await supabase.auth.updateUser({
-      password,
+    const { error } = await supabase.functions.invoke('complete-rider-password-reset', {
+      method: 'POST',
+      body: {
+        phone,
+        resetToken,
+        password,
+      },
     });
 
     setIsUpdatingPassword(false);
 
     if (error) {
-      Alert.alert('Unable to update password', error.message);
+      Alert.alert('Unable to update password', await getEdgeFunctionErrorMessage(error, 'Unable to reset password right now.'));
       return;
     }
 

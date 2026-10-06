@@ -96,7 +96,7 @@ const logApiError = (context: string, error: any) => {
 
 const reverseGeocodeWithGoogle = async (latitude: number, longitude: number): Promise<string> => {
   if (!GOOGLE_MAPS_API_KEY) {
-    return 'Current location';
+    return '';
   }
 
   try {
@@ -148,11 +148,84 @@ const reverseGeocodeWithGoogle = async (latitude: number, longitude: number): Pr
       });
     }
 
-    return 'Current location';
+    return '';
   } catch (error) {
     logApiError('Geocoding Network Error', { error: String(error) });
-    return 'Current location';
+    return '';
   }
+};
+
+const reverseGeocodeWithExpo = async (latitude: number, longitude: number): Promise<string> => {
+  try {
+    const results = await Location.reverseGeocodeAsync({ latitude, longitude });
+    const firstResult = results[0];
+
+    if (!firstResult) {
+      return '';
+    }
+
+    const streetPart = [firstResult.name, firstResult.street]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .join(' ')
+      .trim();
+    const areaPart = [firstResult.district, firstResult.city, firstResult.subregion]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .join(', ')
+      .trim();
+
+    if (streetPart && areaPart) {
+      return `${streetPart}, ${areaPart}`;
+    }
+
+    if (streetPart) {
+      return streetPart;
+    }
+
+    return [firstResult.city, firstResult.region, firstResult.country]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .join(', ')
+      .trim();
+  } catch (error) {
+    logApiError('Expo Reverse Geocoding Error', { error: String(error) });
+    return '';
+  }
+};
+
+const resolveCurrentLocationLabel = async (latitude: number, longitude: number): Promise<string> => {
+  const googleLabel = (await reverseGeocodeWithGoogle(latitude, longitude)).trim();
+
+  if (googleLabel) {
+    return googleLabel;
+  }
+
+  return (await reverseGeocodeWithExpo(latitude, longitude)).trim();
+};
+
+const getBestCurrentCoordinates = async (): Promise<Coordinates | null> => {
+  const currentPosition = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Highest,
+  });
+
+  if (currentPosition?.coords) {
+    return {
+      latitude: currentPosition.coords.latitude,
+      longitude: currentPosition.coords.longitude,
+    };
+  }
+
+  const lastKnownPosition = await Location.getLastKnownPositionAsync({
+    maxAge: 5 * 60 * 1000,
+    requiredAccuracy: 500,
+  });
+
+  if (!lastKnownPosition?.coords) {
+    return null;
+  }
+
+  return {
+    latitude: lastKnownPosition.coords.latitude,
+    longitude: lastKnownPosition.coords.longitude,
+  };
 };
 
 type CurrentLocationSnapshot = {
@@ -182,14 +255,13 @@ const prefetchCurrentLocation = (): Promise<CurrentLocationSnapshot | null> => {
         return null;
       }
 
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Highest,
-      });
-      const coords: Coordinates = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      };
-      const label = await reverseGeocodeWithGoogle(coords.latitude, coords.longitude);
+      const coords = await getBestCurrentCoordinates();
+
+      if (!coords) {
+        return null;
+      }
+
+      const label = await resolveCurrentLocationLabel(coords.latitude, coords.longitude);
       const snapshot: CurrentLocationSnapshot = { coords, label };
 
       cachedCurrentLocationSnapshot = snapshot;
@@ -583,7 +655,7 @@ export default function DestinationScreen() {
 
       setCurrentCoords((current) => current ?? snapshot.coords);
       setPickupCoords((current) => current ?? snapshot.coords);
-      setPickupLocation((current) => (current.trim().length > 0 ? current : snapshot.label));
+      setPickupLocation((current) => (current.trim().length > 0 || !snapshot.label ? current : snapshot.label));
     });
 
     return () => {
@@ -715,25 +787,32 @@ export default function DestinationScreen() {
       setPlaceSuggestions([]);
       setIsSearchingPlaces(false);
 
-      const permission = await Location.requestForegroundPermissionsAsync();
+      const existingPermission = await Location.getForegroundPermissionsAsync();
+      const permission =
+        existingPermission.status === 'granted'
+          ? existingPermission
+          : await Location.requestForegroundPermissionsAsync();
 
       if (permission.status !== 'granted') {
         return;
       }
 
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Highest,
-      });
-      const coords: Coordinates = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      };
-      const label = await reverseGeocodeWithGoogle(coords.latitude, coords.longitude);
+      const coords = await getBestCurrentCoordinates();
+
+      if (!coords) {
+        return;
+      }
+
+      setCurrentCoords(coords);
+      setPickupCoords(coords);
+
+      const label = await resolveCurrentLocationLabel(coords.latitude, coords.longitude);
 
       cachedCurrentLocationSnapshot = { coords, label };
-      setCurrentCoords(coords);
-      setPickupLocation(label);
-      setPickupCoords(coords);
+
+      if (label) {
+        setPickupLocation(label);
+      }
     } catch (error) {
       if (__DEV__) {
         console.error('[Current Location Error]:', error);

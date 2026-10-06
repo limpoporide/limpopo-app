@@ -283,6 +283,14 @@ export default function BookingCallScreen() {
       return true;
     }
 
+    const alreadyGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+    );
+
+    if (alreadyGranted) {
+      return true;
+    }
+
     const result = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
       {

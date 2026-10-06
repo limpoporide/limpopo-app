@@ -66,9 +66,13 @@ export default function SomeoneModal({
     setIsLoadingContacts(true);
 
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
+      let permission = await Contacts.getPermissionsAsync();
 
-      if (status !== 'granted') {
+      if (permission.status !== 'granted') {
+        permission = await Contacts.requestPermissionsAsync();
+      }
+
+      if (permission.status !== 'granted') {
         setPermissionError('Contacts permission was not granted.');
         return;
       }

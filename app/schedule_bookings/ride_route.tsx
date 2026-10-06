@@ -119,8 +119,8 @@ export default function RideRouteScreen() {
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [vehiclePricing, setVehiclePricing] = useState<VehiclePricingSummary[]>([]);
-  const hasPickupLocation = pickupLocation.trim().length > 0;
-  const hasDropoffLocation = dropoffLocation.trim().length > 0;
+  const hasPickupLocation = (pickupLocation ?? '').trim().length > 0;
+  const hasDropoffLocation = (dropoffLocation ?? '').trim().length > 0;
   const placesSessionTokens = useRef<Record<string, string>>({
     pickup: createPlacesSessionToken(),
     dropoff: createPlacesSessionToken(),
@@ -379,9 +379,13 @@ export default function RideRouteScreen() {
         overwritePickup,
       });
 
-      const permission = requestPermission
-        ? await Location.requestForegroundPermissionsAsync()
-        : await Location.getForegroundPermissionsAsync();
+      const existingPermission = await Location.getForegroundPermissionsAsync();
+      const permission =
+        existingPermission.status === 'granted'
+          ? existingPermission
+          : requestPermission
+            ? await Location.requestForegroundPermissionsAsync()
+            : existingPermission;
 
       console.log('[Schedule RideRoute] hydrateCurrentLocation:permission', {
         status: permission.status,
@@ -421,28 +425,6 @@ export default function RideRouteScreen() {
 
       setCurrentCoords(coords);
 
-      const resolvedPickup = await reverseGeocodeWithGoogle(coords.latitude, coords.longitude);
-
-      console.log('[Schedule RideRoute] hydrateCurrentLocation:resolvedPickup', {
-        platform: Platform.OS,
-        resolvedPickup,
-      });
-
-      setPickupLocation((currentPickup) => {
-        const nextPickup = overwritePickup || currentPickup.trim().length === 0 ? resolvedPickup : currentPickup;
-
-        console.log('[Schedule RideRoute] hydrateCurrentLocation:setPickupLocation', {
-          currentPickup,
-          nextPickup,
-          overwritePickup,
-        });
-
-        if (!overwritePickup && currentPickup.trim().length > 0) {
-          return currentPickup;
-        }
-
-        return resolvedPickup;
-      });
       setPickupCoords((currentPickupCoords) => {
         const nextCoords = overwritePickup || !currentPickupCoords ? coords : currentPickupCoords;
 
@@ -453,6 +435,36 @@ export default function RideRouteScreen() {
         });
 
         return nextCoords;
+      });
+
+      let resolvedPickup = await reverseGeocodeWithGoogle(coords.latitude, coords.longitude);
+
+      if (!resolvedPickup || resolvedPickup === 'Current location') {
+        resolvedPickup = await reverseGeocodeWithExpo(coords.latitude, coords.longitude);
+      }
+
+      console.log('[Schedule RideRoute] hydrateCurrentLocation:resolvedPickup', {
+        platform: Platform.OS,
+        resolvedPickup,
+      });
+
+      setPickupLocation((currentPickup) => {
+        const normalizedCurrentPickup = (currentPickup ?? '').trim();
+        const normalizedResolvedPickup = (resolvedPickup ?? '').trim();
+        const nextPickup = normalizedResolvedPickup || normalizedCurrentPickup;
+
+        console.log('[Schedule RideRoute] hydrateCurrentLocation:resolvedPickupApplied', {
+          currentPickup,
+          normalizedResolvedPickup,
+          nextPickup,
+          overwritePickup,
+        });
+
+        if (!overwritePickup && normalizedCurrentPickup.length > 0) {
+          return currentPickup;
+        }
+
+        return nextPickup;
       });
 
       return coords;

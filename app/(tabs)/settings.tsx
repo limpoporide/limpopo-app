@@ -9,6 +9,7 @@ import {
   Switch,
   Image,
   Modal,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -52,6 +53,14 @@ export default function Settings() {
   const [profileEmail, setProfileEmail] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+
+  const handleRateApp = async () => {
+    try {
+      await Linking.openURL('market://details?id=com.limpopo.app');
+    } catch {
+      Alert.alert('Unable to open store', 'We could not open the app store right now.');
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -192,6 +201,7 @@ export default function Settings() {
           icon: '⭐',
           label: 'Rate App',
           subtitle: 'Share your feedback',
+          onPress: handleRateApp,
         },
       ],
     },

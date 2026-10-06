@@ -111,7 +111,7 @@ const resolveNotificationContent = (
 
   return {
     type: 'ride_accepted',
-    title: 'Driver accepted your ride',
+    title: 'Pilot accepted your ride',
     body: resolveNotificationBody(status, pickup, dropoff),
     statusKey: 'rideStatus',
   } as const;

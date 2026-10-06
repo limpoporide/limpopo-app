@@ -113,13 +113,13 @@ export default function ScheduleOnboardingScreen() {
             <Ionicons name="close" size={18} color={theme.colors.text} />
           </TouchableOpacity>
         </View>
+
+        <Text style={[styles.actionSectionTitle, styles.headerTitle, { color: theme.colors.text }]}>
+          Choose a Scheduling Service
+        </Text>
       </View>
 
       <View style={styles.swipeSection}>
-        <Text style={[styles.actionSectionTitle, { color: theme.colors.textSecondary }]}>
-          Choose a scheduling service
-        </Text>
-
         <View style={styles.quickActionRow}>
           <TouchableOpacity
             activeOpacity={0.88}
@@ -313,6 +313,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: LATO_FONT_FAMILY,
   },
+  headerTitle: {
+    marginTop: 10,
+    marginBottom: 0,
+    fontSize: 20,
+  },
   quickActionRow: {
     flexDirection: 'row',
     gap: 10,
@@ -320,7 +325,7 @@ const styles = StyleSheet.create({
   quickActionCard: {
     flex: 1,
     minHeight: 94,
-    borderRadius: 16,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
